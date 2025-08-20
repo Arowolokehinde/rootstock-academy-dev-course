@@ -16,7 +16,16 @@ jobs:
 
       # 2. Detect the module from the branch name (e.g., module1/student-solution)
       - name: Detect module from branch name
-        run: echo "MODULE=$(echo $GITHUB_HEAD_REF | cut -d'/' -f1)" >> $GITHUB_ENV
+        run: |
+          echo “Parsing branch name: $GITHUB_HEAD_REF”
+          MODULE=$(echo “$GITHUB_HEAD_REF” | grep -oE ‘^module[0-9]+’)
+
+          if [ -z “$MODULE” ]; then
+            echo “:x: ERROR: Branch name must start with ‘moduleX/’, e.g., ‘module1/[github_username]’”
+            exit 1
+          fi
+
+          echo “MODULE=$MODULE” >> $GITHUB_ENV
 
       # 3. Setup Node.js
       - name: Setup Node.js
@@ -25,56 +34,124 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
-      # 4. Download only the official tests for the detected module
-      - name: Download official tests
+      # 4. Download the official template and tests & inject student contracts 
+      - name: Assemble module project and validate contracts
         run: |
-          git clone https://${{ secrets.TESTS_REPO_TOKEN }}@github.com/rsksmart/rsk-devcourse-assestments-internal tmp_tests
-          mkdir -p tests
-          cp -r tmp_tests/tests/${MODULE}/* ./tests
-          cp tmp_tests/package.json .
-          cp tmp_tests/hardhat.config.js .
+          echo "🔧 Cloning official template repo..."
+          git clone https://${{ secrets.TESTS_REPO_TOKEN }}@github.com/rsksmart/rsk-devcourse-assestments-internal tmp_template
 
-      # 5. Install dependencies
-      - name: Install dependencies
-        run: npm install
+          echo "📁 Copying module ${MODULE} to working directory..."
+          cp -r tmp_template/${MODULE} project
 
-      # 6. Run tests and capture output in a file
-      - name: Run tests and capture output
+          echo "🧹 Cleaning default contracts from module..."
+          rm -rf project/contracts/*
+    
+          echo "📦 Copying student's contracts into project/contracts..."
+          cp -r contracts/* project/contracts/
+
+          echo "✅ Project structure ready."
+
+          echo "🔍 Validating contract filenames..."
+          OFFICIAL_CONTRACTS=$(find tmp_template/${MODULE}/contracts -type f -name "*.sol" -exec basename {} \; | sort)
+          STUDENT_CONTRACTS=$(find project/contracts -type f -name "*.sol" -exec basename {} \; | sort)
+
+          echo "Expected contracts:"
+          echo "$OFFICIAL_CONTRACTS"
+          echo "Student-submitted contracts:"
+          echo "$STUDENT_CONTRACTS"
+
+          MISSING=""
+          for CONTRACT in $OFFICIAL_CONTRACTS; do
+            if ! echo "$STUDENT_CONTRACTS" | grep -qx "$CONTRACT"; then
+              MISSING="$MISSING\n- $CONTRACT"
+            fi
+          done
+
+          if [ ! -z "$MISSING" ]; then
+            echo -e "❌ ERROR: The following expected contract(s) are missing from the PR:\n$MISSING"
+            exit 1
+          fi
+
+          echo "✅ Contract validation passed."
+
+      # 5. Install dependencies,run tests & capture output in a file
+      - name: Run tests (Hardhat + Foundry)
         run: |
+          echo "📁 Creating reports directory"
           mkdir -p reports
-          npx hardhat test ./tests > reports/test-output.txt 2>&1 || true
 
-      # 7. Post detailed feedback as a PR comment (last 50 log lines)
-      - name: Post detailed feedback
+          if [ -f "project/hardhat.config.js" ] && [ -f "project/package.json" ]; then
+            echo "🧪 Running Hardhat tests..."
+            cd project
+            npm install
+            npx hardhat test > ../reports/hardhat-output.txt 2>&1 || true
+            cd ..
+          fi
+
+          if [ -f "project/foundry.toml" ]; then
+            echo "🧪 Running Foundry tests..."
+            cd project
+            forge install
+            forge test > ../reports/foundry-output.txt 2>&1 || true
+            cd ..
+          fi
+          
+      # 6. Post detailed feedback as a PR comment (last 50 log lines)
+      - name: Post detailed feedback (Hardhat + Foundry)
         if: always()
         uses: actions/github-script@v7 # TODO Replace with specifica commit
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const output = fs.readFileSync('reports/test-output.txt', 'utf8');
-            const lines = output.split('\n');
-            const lastLines = lines.slice(-50).join('\n');
+            let hardhatOutput = '';
+            let foundryOutput = '';
+
+            // Read last 50 lines of Hardhat output (if exists)
+            if (fs.existsSync('reports/hardhat-output.txt')) {
+              const hhLines = fs.readFileSync('reports/hardhat-output.txt', 'utf8').split('\n');
+              hardhatOutput = hhLines.slice(-50).join('\n');
+            }
+
+            // Read last 50 lines of Foundry output (if exists)
+            if (fs.existsSync('reports/foundry-output.txt')) {
+              const fLines = fs.readFileSync('reports/foundry-output.txt', 'utf8').split('\n');
+              foundryOutput = fLines.slice(-50).join('\n');
+            }
+
+            let body = '### 🧪 Test Results (${process.env.MODULE}):';
+
+            if (hardhatOutput) {
+              body += `\n\n#### 🔹 Hardhat:\n\`\`\`\n${hardhatOutput}\n\`\`\``;
+            }
+
+            if (foundryOutput) {
+              body += `\n\n#### 🔹 Foundry:\n\`\`\`\n${foundryOutput}\n\`\`\``;
+            }
+
+            if (!hardhatOutput && !foundryOutput) {
+              body += '\n\n❌ No test output found. Something went wrong with the execution.';
+            }
 
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `### 🧪 Test Results (${process.env.MODULE}):\n\n\`\`\`\n${lastLines}\n\`\`\``
+              body
             });
 
-      #8. Update Thinkific if all tests passed and mark course as completed 
+      #7. Update Thinkific if all tests passed and mark course as completed 
       - name: Update Thinkific if all tests passed
         if: success()
         run: |
-          # 1. Fetch Thinkific user_id by email or GitHub username
+          # 7A. Fetch Thinkific user_id by email or GitHub username
           THINKIFIC_USER_ID=$(curl -s -X GET \
             "https://api.thinkific.com/api/public/v1/users?query=${GITHUB_ACTOR}" \
             -H "X-Auth-API-Key: ${{ secrets.THINKIFIC_API_KEY }}" \
             -H "X-Auth-Subdomain: ${{ secrets.THINKIFIC_SUBDOMAIN }}" \
             | jq '.items[0].id')
 
-          # Determine course_id based on MODULE
+          # 7B. Determine course_id based on MODULE
           case "${MODULE}" in
             module1)
               COURSE_ID=123456
@@ -91,7 +168,7 @@ jobs:
               ;;
           esac
       
-          # 2. Mark course as completed
+          # 7C. Mark course as completed
           curl -X POST "https://api.thinkific.com/api/public/v1/enrollments" \
             -H "X-Auth-API-Key: ${{ secrets.THINKIFIC_API_KEY }}" \
             -H "X-Auth-Subdomain: ${{ secrets.THINKIFIC_SUBDOMAIN }}" \
