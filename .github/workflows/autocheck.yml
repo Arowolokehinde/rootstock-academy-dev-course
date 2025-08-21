@@ -8,6 +8,10 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
 
     steps:
       # 1. Checkout the student's PR code
@@ -108,6 +112,8 @@ jobs:
       - name: Post detailed feedback (Hardhat + Foundry)
         if: always()
         uses: actions/github-script@v7 # TODO Replace with specifica commit
+        env:
+          MODULE_NAME: ${{ env.MODULE }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -127,7 +133,7 @@ jobs:
               foundryOutput = fLines.slice(-50).join('\n');
             }
 
-            let body = '### 🧪 Test Results (${process.env.MODULE}):';
+            let body = `### 🧪 Test Results (${process.env.MODULE_NAME}):`;
 
             if (hardhatOutput) {
               body += `\n\n#### 🔹 Hardhat:\n\`\`\`\n${hardhatOutput}\n\`\`\``;
