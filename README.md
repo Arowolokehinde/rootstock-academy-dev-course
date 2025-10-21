@@ -152,7 +152,7 @@ git push origin module1/your-username
 1. Your PR will be automatically tested
 2. The DevX team will review your submission
 3. You'll receive feedback if changes are needed
-4. Once approved, your grade will be recorded in Thinkific
+4. Once approved, your grade will be recorded in the platform
 5. You can proceed to the next module!
 
 <p align="right">(<a href="#table-of-contents">back to top</a>) ⬆️</p>
@@ -162,7 +162,7 @@ git push origin module1/your-username
 # Module 1: Solidity Fundamentals
 
 💡 **Learning Time**: 4-6 hours  
-📹 **Video Lessons**: Available on Thinkific  
+📹 **Video Lessons**: Available on the platform  
 🎯 **Goal**: Master core Solidity concepts through hands-on coding
 
 ## Module 1 Overview
@@ -404,7 +404,7 @@ Module 2 will cover advanced smart contract development topics. Stay tuned!
 
 For questions or issues:
 - **Technical Support**: DevX (DevRel) Team
-- **Course Content**: Thinkific platform messaging
+- **Course Content**: platform messaging
 - **Community Help**: Discord #developer-support channel
 
 ---
