@@ -42,6 +42,7 @@ jobs:
           echo "PR Number: $PR_NUMBER"
 
       - name: Generate GitHub App Token
+        if: env.MODULE != 'module7'
         id: generate_token
         uses: actions/create-github-app-token@31c86eb3b33c9b601a1f60f98dcbfd1d70f379b4 # v1.10.3
         with:
@@ -51,6 +52,7 @@ jobs:
           repositories: rsk-devcourse-assestments-internal
 
       - name: Clone official template
+        if: env.MODULE != 'module7'
         run: |
           echo "Cloning official template repo..."
           git clone --depth 1 https://x-access-token:${{ steps.generate_token.outputs.token }}@github.com/rsksmart/rsk-devcourse-assestments-internal template
@@ -59,16 +61,17 @@ jobs:
           ls -la template/
 
       - name: Setup Node.js
+        if: env.MODULE != 'module7'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
       - name: Assemble project
+        if: env.MODULE != 'module7'
         run: |
           echo "Preparing project for module: $MODULE"
           
-          # Copy template module to working directory
           cp -r template/${MODULE} project
           
           if [ "$MODULE" = "module3" ]; then
@@ -114,12 +117,6 @@ jobs:
                 echo "Copied script: $(basename $file)"
               fi
             done
-            
-            echo "Template's hardhat.config.ts will be used for deployment validation"
-            
-          elif [ "$MODULE" = "module7" ]; then
-            echo "Module 7: No test execution needed"
-            echo "Assessment file will be processed in feedback step"
           fi
           
           echo ""
@@ -130,7 +127,6 @@ jobs:
         if: env.MODULE != 'module7'
         working-directory: project
         run: |
-          echo "Installing dependencies from template's package.json..."
           npm install
 
       - name: Run tests
